@@ -6,14 +6,10 @@
 #include "../util/parser/parser.h"
 
 #define SHELL_EXIT -100
-#define pathSize 200
-#define maxArgc 10
-#define maxArgSize 50
 /**
  * Parse and execute a command.
  */
 int parse_command(command_t *cmd, int level, command_t *father);
 
-extern char *path;
 
 #endif /* _CMD_H */

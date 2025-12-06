@@ -91,9 +91,6 @@ static void start_shell(void)
 
 int main(void)
 {
-	path = malloc(pathSize);
-	strcpy(path, getenv("HOME"));
-	chdir(path);
 
 	start_shell();
 

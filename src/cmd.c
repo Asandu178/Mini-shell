@@ -18,52 +18,29 @@
 /**
  * Internal change-directory command.
  */
-extern char *path = NULL;
-
-int checkPath(char *path) {
-	int fd = open(path, O_PATH);
-	if (fd > 0)
-		return 0;
-	return -1;
-}
-
-int changePath(char *path) {
-	int fd = open(path, O_PATH);
-	if (fd > 0) {
-		chdir(path);
-		return 0;
-	}
-	return -1;
-}
 
 static bool shell_cd(word_t *dir)
 {
-	/* TODO: Execute cd. */
-	// set up home as starting path or go back home if we input "cd" or "cd ~"
-
-	if (!path || !dir || !strcmp(dir->string, "~")) {
-		strcpy(path, getenv("HOME"));
-		chdir(path);
-		return true;
+	char *path = NULL;
+	int malloced = 0;
+	if (dir && strchr(dir->string, '~') == NULL) {
+		path = get_word(dir);
+		malloced = 1;
+	} else {
+		// this is just a ref
+		path = getenv("HOME");
 	}
-
-	char newpath[pathSize] = "";
-	if (dir->string[0] != '/') {
- 		strcpy(newpath, path);
-		strcat(newpath, "/");
-		strcat(newpath, dir->string);
-	} else 
-		strcat(newpath, dir->string);
-
-	if (changePath(newpath) == 0) {
-		strcat(path, "/");
-		strcat(path, dir->string);
+	int r = chdir(path);
+	if (r == -1) {
+		if (malloced)
+			free(path);
+		return 1;
 	}
-
-	// get current path
-	getcwd(path, pathSize);
-
-	return 0;
+	else  {
+		if (malloced)
+			free(path);
+		return 0;
+	}
 }
 
 /**
@@ -77,6 +54,66 @@ static int shell_exit(void)
 	return SHELL_EXIT; /* TODO: Replace with actual exit code. */
 }
 
+void handleRedirects(simple_command_t *s, int builtin) {
+	char *in = get_word(s->in);
+	char *out = get_word(s->out);
+	char *err = get_word(s->err);
+	if (in) {
+			int fd = open(in, O_RDONLY);
+			dup2(fd, STDIN_FILENO);
+			close(fd);
+		}
+	if (out && err && !strcmp(out, err)) {
+		int flags = O_WRONLY | O_CREAT;
+		if (s->io_flags & IO_OUT_APPEND || s->io_flags & IO_ERR_APPEND)
+			flags |= O_APPEND;
+		else
+			flags |= O_TRUNC;
+		int fd = open(out, flags, 0644);
+		if (!builtin) {
+			dup2(fd, STDERR_FILENO);
+			dup2(fd, STDOUT_FILENO);
+		}
+		close(fd);
+	} else {
+		if (out) {
+			int flags = O_WRONLY | O_CREAT;
+
+			if (s->io_flags & IO_OUT_APPEND)
+				flags |= O_APPEND;
+			else
+				flags |= O_TRUNC;
+
+			int fd = open(out, flags, 0644);
+			if (!builtin)
+				dup2(fd, STDOUT_FILENO);
+			close(fd);
+		}
+		if (err) {
+			int flags = O_WRONLY | O_CREAT;
+
+			if (s->io_flags & IO_ERR_APPEND)
+				flags |= O_APPEND;
+			else
+				flags |= O_TRUNC;
+
+			int fd = open(err, flags, 0644);
+			if (!builtin)
+				dup2(fd, STDERR_FILENO);
+			close(fd);
+		}
+	}
+
+	for (int i = 3 ; i < 1024 ; i++)
+		close(i);
+	if (in)
+		free(in);
+	if (out)
+		free(out);
+	if (err)
+		free(err);
+}
+
 /**
  * Parse a simple command (internal, environment variable assignment,
  * external command).
@@ -85,15 +122,35 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 {
 	/* TODO: Sanity checks. */
 
+	char *command = get_word(s->verb);
+
 	int r = 0;
 
-	if (!strcmp(s->verb->string, "cd")) {
+	if (!strcmp(command, "cd")) {
+		handleRedirects(s, true);
 		r = shell_cd(s->params);
+		free(command);
 		return r;
 	}
 
-	if (!strcmp(s->verb->string, "exit") || !(strcmp(s->verb->string, "quit"))) {
+	if (!strcmp(command, "exit") || !(strcmp(command, "quit"))) {
 		r = shell_exit();
+		free(command);
+		return r;
+	}
+
+	if (strchr(command, '=') != NULL) {
+		char *save;
+		char *copy = malloc(200);
+		strcpy(copy, command);
+		char *key = strtok(copy, "=");
+		char *value = strtok(NULL, "=");
+
+		r = setenv(key, value, 1);
+		if (r == -1)
+			printf("eroare frate\n");
+		free(command);
+		free(copy);
 		return r;
 	}
 
@@ -110,21 +167,11 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 	 */
 
 	int argc = 0;
-	char **args = malloc(sizeof(char*) * maxArgc);
-
-	args[argc++] = s->verb->string;
-
-	for (word_t *params = s->params ; params != NULL ; params = params->next_word)
-		args[argc++] = params->string;
-
-	args[argc] = NULL;
-
-
+	char **args = get_argv(s, &argc);
 
 	pid_t p = fork();
 	int status = 0;
 
-	fflush(0);
 
 	switch (p)
 	{
@@ -133,43 +180,17 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 			break;
 	
 		case 0:
-			if (s->in) {
-				int fd = open(s->in->string, O_RDONLY);
-				dup2(fd, STDIN_FILENO);
-				close(fd);
-			}
-			if (s->out) {
-
-				int flags = O_RDWR | O_CREAT;
-
-				if (s->io_flags & IO_OUT_APPEND)
-					flags |= O_APPEND;
-				else
-					flags |= O_TRUNC;
-
-				int fd = open(s->out->string, flags, 0644);
-				dup2(fd, STDOUT_FILENO);
-				close(fd);
-			}
-			if (s->err) {
-
-				int flags = O_RDWR | O_CREAT;
-
-				if (s->io_flags & IO_ERR_APPEND)
-					flags |= O_APPEND;
-				else
-					flags |= O_TRUNC;
-
-				int fd = open(s->err->string, flags, 0644);
-				dup2(fd, STDERR_FILENO);
-				close(fd);
-			}
+			handleRedirects(s, false);
 			execvp(args[0], args);
 			break;
 		default:
 			waitpid(p, &status, 0);
-				free(args);
 	}
+
+	for (int i = 0 ; i < argc ; i++)
+		free(args[i]);
+	free(args);
+	free(command);
 
 
 	return status;
@@ -191,7 +212,7 @@ static bool run_in_parallel(command_t *cmd1, command_t *cmd2, int level,
 			break;
 	
 		case 0:
-			r = parse_command(cmd1, level, father);
+			r = parse_command(cmd1, level + 1, father);
 			exit(r);
 			break;
 		default:
@@ -205,7 +226,7 @@ static bool run_in_parallel(command_t *cmd1, command_t *cmd2, int level,
 			break;
 	
 		case 0:
-			r = parse_command(cmd2, level, father);
+			r = parse_command(cmd2, level + 1, father);
 			exit(r);
 			break;
 		default:
