@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "../util/parser/parser.h"
 #include "cmd.h"
@@ -10,7 +11,6 @@
 
 #define PROMPT             "> "
 #define CHUNK_SIZE         1024
-
 
 void parse_error(const char *str, const int where)
 {
@@ -67,6 +67,7 @@ static void start_shell(void)
 	int ret;
 
 	for (;;) {
+		//printf(path);
 		printf(PROMPT);
 		fflush(stdout);
 		ret = 0;
@@ -90,6 +91,10 @@ static void start_shell(void)
 
 int main(void)
 {
+	path = malloc(pathSize);
+	strcpy(path, getenv("HOME"));
+	chdir(path);
+
 	start_shell();
 
 	return EXIT_SUCCESS;
