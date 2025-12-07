@@ -140,6 +140,18 @@ static int parse_simple(simple_command_t *s, int level, command_t *father)
 		return r;
 	}
 
+	// built ins just like cd
+	if (!strcmp(command, "false")) {
+		handleRedirects(s, true);
+		free(command);
+		return 1;
+	}
+	if (!strcmp(command, "true")) {
+		handleRedirects(s, true);
+		free(command);
+		return 0;
+	}
+
 	if (strchr(command, '=') != NULL) {
 		char *save;
 		char *copy = malloc(200);
