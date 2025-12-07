@@ -5,6 +5,7 @@
 #include <sys/wait.h>
 
 #include <stdlib.h>
+#include <stdio.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
@@ -251,24 +252,23 @@ static bool run_on_pipe(command_t *cmd1, command_t *cmd2, int level,
 	int status;
 	int fd[2];
 
-	// error creating pipe
-	if (pipe(fd) == -1)
-		return false;
+	DIE(pipe(fd) == -1, "Pipe error\n");
 
 	pid_t p1 = fork();
 
-		switch (p1) {
+	switch (p1) {
 		case -1:
 			return -1;
 			break;
 	
 		case 0:
-			r = parse_command(cmd1, level, father);
+			close(fd[READ]);
+			dup2(fd[WRITE], STDOUT_FILENO);
+			close(fd[WRITE]);
+			r = parse_command(cmd1, level + 1, father);
 			exit(r);
 			break;
 		default:
-		// wait for the child process to finish
-		waitpid(p1, NULL, 0);
 	}
 
 	pid_t p2 = fork();
@@ -279,13 +279,24 @@ static bool run_on_pipe(command_t *cmd1, command_t *cmd2, int level,
 			break;
 	
 		case 0:
-			r = parse_command(cmd2, level, father);
+			close(fd[WRITE]);
+			dup2(fd[READ], STDIN_FILENO);
+			close(fd[READ]);
+			r = parse_command(cmd2, level + 1, father);
 			exit(r);
 			break;
 		default:
 	}
 
-	return true; /* TODO: Replace with actual exit status. */
+	close(fd[READ]);
+	close(fd[WRITE]);
+
+	waitpid(p1, NULL, 0);
+	waitpid(p2, &status, 0);
+
+
+
+	return status; /* TODO: Replace with actual exit status. */
 }
 
 /**
@@ -337,6 +348,7 @@ int parse_command(command_t *c, int level, command_t *father)
 		/* TODO: Redirect the output of the first command to the
 		 * input of the second.
 		 */
+		r = run_on_pipe(c->cmd1, c->cmd2, level, c);
 		break;
 
 	default:

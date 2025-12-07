@@ -67,7 +67,6 @@ static void start_shell(void)
 	int ret;
 
 	for (;;) {
-		//printf(path);
 		printf(PROMPT);
 		fflush(stdout);
 		ret = 0;
