@@ -90,7 +90,6 @@ static void start_shell(void)
 
 int main(void)
 {
-
 	start_shell();
 
 	return EXIT_SUCCESS;
