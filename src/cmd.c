@@ -217,6 +217,7 @@ static bool run_in_parallel(command_t *cmd1, command_t *cmd2, int level,
 			exit(r);
 			break;
 		default:
+			;
 	}
 
 	pid_t p2 = fork();
@@ -231,6 +232,7 @@ static bool run_in_parallel(command_t *cmd1, command_t *cmd2, int level,
 			exit(r);
 			break;
 		default:
+			;
 	}
 
 	waitpid(p1, &status1, 0);
@@ -269,6 +271,7 @@ static bool run_on_pipe(command_t *cmd1, command_t *cmd2, int level,
 			exit(r);
 			break;
 		default:
+			;
 	}
 
 	pid_t p2 = fork();
@@ -286,6 +289,7 @@ static bool run_on_pipe(command_t *cmd1, command_t *cmd2, int level,
 			exit(r);
 			break;
 		default:
+			;
 	}
 
 	close(fd[READ]);
